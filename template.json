@@ -1,0 +1,149 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Transform": "AWS::Serverless-2016-10-31",
+  "Description": "Sample Template for Custom Authorizer",
+  "Parameters": {
+    "DBSECRET": {
+      "Type": "String",
+      "Default": "testdb-dev"
+    },
+    "_comment": "Add any Other Parameters that are needed"
+  },
+  "Globals": {
+    "Function": {
+      "Runtime": "python3.7",
+      "Timeout": 900,
+      "MemorySize": 1850,
+      "Tracing": "Active"
+    },
+    "Api": {
+      "EndpointConfiguration": "REGIONAL",
+      "Cors":{
+          "AllowMethods": "'OPTIONS,POST,GET,PUT,DELETE'",
+          "AllowHeaders": "'Content-Type,Authorization'",
+          "AllowOrigin": "'*'"
+      },
+      "TracingEnabled": true
+
+    }
+  },
+  "Resources": {
+    "RoleMapTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "role_map_table",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "role",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "role",
+            "KeyType": "HASH"
+          }
+        ],
+        "PointInTimeRecoverySpecification" : {
+          "PointInTimeRecoveryEnabled" : true
+        },
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 50,
+          "WriteCapacityUnits": 10
+        }
+      }
+    },
+    "MyApiGateway": {
+      "Type": "AWS::Serverless::Api",
+      "Properties": {
+        "Name": {
+          "Ref": "AWS::StackName"
+        },
+        "StageName": "Prod",
+        "Auth": {
+          "Authorizers": {
+            "MyCustomAuth": {
+              "FunctionPayloadType": "REQUEST",
+              "FunctionArn": {
+                "Fn::GetAtt": [
+                  "CustomAuthFunction",
+                  "Arn"
+                ]
+              },
+              "AuthorizerResultTtlInSeconds": "0",
+              "Identity": {
+                "Headers": [
+                  "Authorization"
+                ]
+              }
+            }
+          }
+        },
+        "Cors": {
+          "AllowMethods": "'OPTIONS,POST,GET,PUT,DELETE'",
+          "AllowHeaders": "'Content-Type,Authorization'",
+          "AllowOrigin": "'*'"
+        }
+      }
+    },
+    "CustomAuthFunction": {
+      "Type": "AWS::Serverless::Function",
+      "Properties": {
+        "CodeUri": "",
+        "Handler": "lambda_handler",
+        "Runtime": "python3.6",
+        "Environment": {
+          "Variables": {
+            "ROLE_TABLE": {
+              "Ref": "RoleMapTable"
+            }
+          }
+        },
+        "Role":{
+          "Ref":"IAM Role ARN is to added here"
+        },
+
+        "Policies": "Resources Policies to be Added Here"
+      }
+    },
+    "JavaServiceFunction":{
+         "Type":"AWS::Serverless::Function",
+         "Properties":{
+            "CodeUri":"",
+            "Role":{
+               "Ref":"IAM Role ARN is to added here"
+            },
+            "Environment":{
+               "Variables":{
+                  "ServiceClass":"Java Service Class has to added here",
+                  "AppKey":"testdb-dev"
+               }
+            },
+            "Events":{
+               "GETExampleApiGateway":{
+                  "Type":"Api",
+                  "Properties":{
+                     "RestApiId":{
+                        "Ref":"MyApiGateway"
+                     },
+                     "Auth":{
+                        "Authorizer":"MyCustomAuth"
+                     },
+                     "Path":"/testApi",
+                     "Method":"GET"
+                  }
+               }
+            }
+         }
+      }
+},
+
+  "Outputs":{
+      "CustomDomain":{
+         "Description":"Custom endpoint URL for environment",
+         "Value": {
+            "Fn::Sub":"https://${ApiDnsRecord}"
+         }
+      }
+   }
+}
